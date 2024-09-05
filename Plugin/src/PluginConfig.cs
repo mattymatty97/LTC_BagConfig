@@ -16,7 +16,6 @@ internal static class PluginConfig
         General.Enabled = config.Bind("General", "Enabled", true, "Change the BeltBag Behaviour");
         General.Tooltip = config.Bind("General", "Tooltip", true, "Show a tooltip if the target item cannot be stored");
         General.DropAll = config.Bind("General", "Add Empty Bag Key", true, "Add [E] action to Drop the entire bag inventory");
-        General.DetectionMode = config.Bind("General", "Detection Mode", DetectionMode.Multiple, "System used to detect scrap in line of sight");
         General.GrabRange = config.Bind("General", "Grab Range", 4f, new ConfigDescription("Show a tooltip if the target item cannot be stored", new AcceptableValueRange<float>(0f,20f)));
         
         Inventory.SlotCount = config.Bind("Inventory", "Slots", 15, new ConfigDescription("How many items can the bag store", new AcceptableValueRange<int>(0, int.MaxValue)));
@@ -68,8 +67,6 @@ internal static class PluginConfig
         public static ConfigEntry<bool> DropAll { get; internal set; }
         
         public static ConfigEntry<float> GrabRange { get; internal set; }
-        
-        public static ConfigEntry<DetectionMode> DetectionMode { get; internal set; }
 
     }
     

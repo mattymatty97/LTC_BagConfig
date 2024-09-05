@@ -74,95 +74,35 @@ internal static class BeltBagPatch
                     HUDManager.Instance.DisplayTip("Belt bag Info", "This bag is Full!");
                 return;
             }
-
-            GrabbableObject component = null;
-            int index = 0;
-            int hits = 0;
-            bool hitWall = false;
-            RaycastHit curr;
-            GrabbableObject currGrabbable;
-            switch (PluginConfig.General.DetectionMode.Value)
+            
+            if(!Physics.Raycast(@this.playerHeldBy.gameplayCamera.transform.position,
+                @this.playerHeldBy.gameplayCamera.transform.forward,
+                out var raycastHit,
+                PluginConfig.General.GrabRange.Value,
+                GameNetworkManager.Instance.localPlayerController.interactableObjectsMask,
+                QueryTriggerInteraction.Ignore))
+                return;
+            
+            if (raycastHit.collider.gameObject.layer == 8 || raycastHit.collider.tag != "PhysicsProp")
             {
-                case PluginConfig.DetectionMode.Multiple:
-                    hits = Physics.RaycastNonAlloc(@this.playerHeldBy.gameplayCamera.transform.position,
-                        @this.playerHeldBy.gameplayCamera.transform.forward, RaycastHits,
-                        PluginConfig.General.GrabRange.Value,
-                        GameNetworkManager.Instance.localPlayerController.interactableObjectsMask,
-                        QueryTriggerInteraction.Ignore);
-
-                    if (hits == 0)
-                        return;
-
-                    for (index = 0; index < hits; index++)
-                    {
-                        curr = RaycastHits[index];
-
-                        if (curr.collider.gameObject.layer == 8 || curr.collider.tag != "PhysicsProp")
-                        {
-                            hitWall = true;
-                            break;
-                        }
-
-                        currGrabbable = curr.collider.gameObject.GetComponent<GrabbableObject>();
-
-                        if (!@this.CanBePutInBag(currGrabbable))
-                            continue;
-
-                        if (!CheckBagFilters(currGrabbable))
-                            continue;
-
-                        component = currGrabbable;
-                        break;
-                    }
-                    break;
-                case PluginConfig.DetectionMode.Single:
-                    if(!Physics.Raycast(@this.playerHeldBy.gameplayCamera.transform.position,
-                        @this.playerHeldBy.gameplayCamera.transform.forward,
-                        out RaycastHits[0],
-                        PluginConfig.General.GrabRange.Value,
-                        GameNetworkManager.Instance.localPlayerController.interactableObjectsMask,
-                        QueryTriggerInteraction.Ignore))
-                        return;
-
-                    hits = 1;
-                    
-                    curr = RaycastHits[0];
-                    
-                    if (curr.collider.gameObject.layer == 8 || curr.collider.tag != "PhysicsProp")
-                    {
-                        hitWall = true;
-                        break;
-                    }
-
-                    currGrabbable = curr.collider.gameObject.GetComponent<GrabbableObject>();
-
-                    if (!@this.CanBePutInBag(currGrabbable))
-                        break;
-
-                    if (!CheckBagFilters(currGrabbable))
-                        break;
-
-                    component = currGrabbable;
-                    
-                    
-                    break;
+                return;
             }
 
-            if (index == 0 && hitWall)
+            var component = raycastHit.collider.gameObject.GetComponent<GrabbableObject>();
+
+            if (!@this.CanBePutInBag(component))
                 return;
 
-            if (component)
-                @this.TryAddObjectToBag(component);
-            else if (PluginConfig.General.Tooltip.Value)
+            if (CheckBagFilters(component))
             {
-                var collectable = RaycastHits
-                    .Take(hits)
-                    .Select(hit => hit.collider.gameObject.GetComponent<GrabbableObject>())
-                    .FirstOrDefault(@this.CanBePutInBag);
-
-                if (collectable)
-                    HUDManager.Instance.DisplayTip("Belt bag Info",
-                        $"Cannot store {collectable.itemProperties.itemName} inside of the bag!");
+                @this.TryAddObjectToBag(component);
+                return;
+            }
+            
+            if (PluginConfig.General.Tooltip.Value)
+            {
+                HUDManager.Instance.DisplayTip("Belt bag Info",
+                    $"Cannot store {component.itemProperties.itemName} inside of the bag!");
             }
         }
     }
