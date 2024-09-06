@@ -39,6 +39,7 @@ namespace BagConfig
 				Log.LogInfo("Initializing Configs");
 
 				PluginConfig.Init();
+				PatchLateJoin.Init();
 				
 				Log.LogInfo("Patching Methods");
 				

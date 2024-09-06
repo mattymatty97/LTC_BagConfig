@@ -1,9 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Project>
-
-    
 	<PropertyGroup>
 		<!-- Common Versioning and Module Information -->
-		<Version>1.0.0.0</Version>
+		<Version>0.0.3</Version>
 		<ModName>BagConfig</ModName>
 		<ModGUID>mattymatty.BagConfig</ModGUID>
         <ModNameSpace>$(ModName)</ModNameSpace>
@@ -80,12 +79,31 @@
     </Target>
 	
 	<!-- Automatically create the zip folder structure, ready for distribution. -->
-    <Target Name="MoveToOutput" AfterTargets="Build" Condition="$(Configuration.Contains('Release'))">
+    <Target Name="MoveToOutput" AfterTargets="Build">
         <Message Importance="high" Text="Copying files to output directory"/>
         <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ZipDir)$(ZipStructure)"/>
         <Copy SourceFiles="@(Assets)" DestinationFolder="$(ZipDir)$(ZipStructure)%(Assets.RelativeDir)"/>
     </Target>
 
+    <ItemGroup>
+        <PackageReference Include="JsonPoke" Version="1.2.0" />
+        <PackageReference Include="JsonPeek" Version="1.2.0" />
+    </ItemGroup>
+
+    <!-- Automatically create the zip folder structure, ready for distribution. -->
+    <Target Name="UpdateManifest" AfterTargets="MoveToOutput">
+        <JsonPoke ContentPath="$(SolutionDir)/Thunderstore/manifest.json" Query=".name" Value="$(ModName)" />
+        <JsonPoke ContentPath="$(SolutionDir)/Thunderstore/manifest.json" Query=".version_number" Value="$(Version)" />
+    </Target>
+    
+    <Target Name="CreateZip" AfterTargets="UpdateManifest">
+        <Message Importance="high" Text="Zipping project for distribution."/>
+        <PropertyGroup>
+            <ZipFile>$(SolutionDir)\Output\$(ModName)-$(Version).zip</ZipFile>
+        </PropertyGroup>
+        <ZipDirectory DestinationFile="$(ZipFile)" SourceDirectory="$(SolutionDir)/Thunderstore" Overwrite="true"/>
+    </Target>
+    
     <ItemGroup>
         <PackageReference Include="BepInEx.PluginInfoProps" Version="*"/>
     </ItemGroup>

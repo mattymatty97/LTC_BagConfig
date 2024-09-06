@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
+using System.Runtime.CompilerServices;
 using HarmonyLib;
 using MonoMod.RuntimeDetour;
+using Unity.Netcode;
 using UnityEngine;
 
 namespace BagConfig.Patches;
@@ -11,7 +14,6 @@ namespace BagConfig.Patches;
 [HarmonyPatch]
 internal static class BeltBagPatch
 {
-    
     internal static void Patch()
     {
         var beltInteractMethod = AccessTools.Method(typeof(BeltBagItem), nameof(BeltBagItem.ItemInteractLeftRight));
@@ -20,14 +22,13 @@ internal static class BeltBagPatch
         BagConfig.Hooks.Add(new Hook(beltInteractMethod, overrideInteractMethod, new HookConfig { Priority = -999 }));
     }
 
-    private static readonly RaycastHit[] RaycastHits = new RaycastHit[15];
-    
     private static readonly Action<GrabbableObject, bool> BaseInteractMethod;
 
     static BeltBagPatch()
     {
         var method = AccessTools.Method(typeof(GrabbableObject), nameof(GrabbableObject.ItemInteractLeftRight));
-        var dm = new DynamicMethod("Base.ItemInteractLeftRight", null, [typeof(GrabbableObject), typeof(bool)], typeof(BeltBagItem));
+        var dm = new DynamicMethod("Base.ItemInteractLeftRight", null, [typeof(GrabbableObject), typeof(bool)],
+            typeof(BeltBagItem));
         var gen = dm.GetILGenerator();
         gen.Emit(OpCodes.Ldarg_0);
         gen.Emit(OpCodes.Ldarg_1);
@@ -45,20 +46,14 @@ internal static class BeltBagPatch
             yield return new WaitForEndOfFrame();
         }
     }
-    
+
     private static void OverrideGrab(Action<BeltBagItem, bool> orig, BeltBagItem @this, bool right)
     {
-        if (!PluginConfig.General.Enabled.Value)
-        {
-            orig.Invoke(@this, right);
-            return;
-        }
-        
         BaseInteractMethod.Invoke(@this, right);
 
         if (right)
         {
-            if (!PluginConfig.General.DropAll.Value) 
+            if (!PluginConfig.Misc.DropAll.Value)
                 return;
             //dump all items!
             @this.StartCoroutine(EmptyBagCoroutine(@this));
@@ -68,21 +63,22 @@ internal static class BeltBagPatch
             if (@this.playerHeldBy == null || @this.tryingAddToBag)
                 return;
 
-            if (@this.objectsInBag.Count >= PluginConfig.Inventory.SlotCount.Value)
+            if (@this.objectsInBag.Count >= PluginConfig.Limits.Capacity.Value)
             {
-                if (PluginConfig.General.Tooltip.Value)
+                if (PluginConfig.Misc.Tooltip.Value)
                     HUDManager.Instance.DisplayTip("Belt bag Info", "This bag is Full!");
                 return;
             }
-            
-            if(!Physics.Raycast(@this.playerHeldBy.gameplayCamera.transform.position,
-                @this.playerHeldBy.gameplayCamera.transform.forward,
-                out var raycastHit,
-                PluginConfig.General.GrabRange.Value,
-                GameNetworkManager.Instance.localPlayerController.interactableObjectsMask,
-                QueryTriggerInteraction.Ignore))
+
+            if (!Physics.Raycast(@this.playerHeldBy.gameplayCamera.transform.position,
+                    @this.playerHeldBy.gameplayCamera.transform.forward,
+                    out var raycastHit,
+                    PluginConfig.Misc.GrabRange.Value,
+                    GameNetworkManager.Instance.localPlayerController.interactableObjectsMask))
                 return;
             
+            BagConfig.Log.LogWarning($"Grab Hit: {raycastHit.collider.transform.parent?.name ?? ""}.{raycastHit.collider.gameObject.name}");
+
             if (raycastHit.collider.gameObject.layer == 8 || raycastHit.collider.tag != "PhysicsProp")
             {
                 return;
@@ -93,13 +89,13 @@ internal static class BeltBagPatch
             if (!@this.CanBePutInBag(component))
                 return;
 
-            if (CheckBagFilters(component))
+            if (@this.CheckBagFilters(component))
             {
                 @this.TryAddObjectToBag(component);
                 return;
             }
-            
-            if (PluginConfig.General.Tooltip.Value)
+
+            if (PluginConfig.Misc.Tooltip.Value)
             {
                 HUDManager.Instance.DisplayTip("Belt bag Info",
                     $"Cannot store {component.itemProperties.itemName} inside of the bag!");
@@ -113,45 +109,41 @@ internal static class BeltBagPatch
                !grabbable.isHeld && !grabbable.isHeldByEnemy &&
                /*Maneater!*/grabbable.itemProperties.itemId != 123984;
     }
-    
-    private static bool CheckBagFilters(GrabbableObject grabbable)
+
+    private static bool CheckBagFilters(this BeltBagItem @this, GrabbableObject grabbable)
     {
-        var name = grabbable.itemProperties.itemName;
+        var config = grabbable.GetBagCategory();
 
-        if (PluginConfig.Inventory.BlackListedItems.Contains(name))
+        var limit = config.Limit.Value;
+
+        if (limit < 0)
+            return config.Allow.Value;
+
+        if (limit == 0)
             return false;
-        
-        if (PluginConfig.Inventory.WhitelistedItems.Contains(name))
-            return true;
 
-        var isScrap = grabbable.itemProperties.isScrap;
-        var isTwoHanded = grabbable.itemProperties.twoHanded;
+        var memory = CategoryMemory.GetOrCreateValue(@this);
+        if (memory.TryGetValue(config, out var count) && count.Count >= limit)
+        {
+            return false;
+        }
 
-        if (!isScrap && PluginConfig.Inventory.Tools.Value)
-            return true;
-        
-        if (isScrap && !isTwoHanded && PluginConfig.Inventory.Scrap.Value)
-            return true;
-        
-        if (isScrap && isTwoHanded &&  PluginConfig.Inventory.Scrap.Value && PluginConfig.Inventory.TwoHanded.Value)
-            return true;
-        
-        return false;
+        return config.Allow.Value;
     }
-    
+
     [HarmonyPrefix]
     [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.Start))]
     private static void AddBagTooltip(StartOfRound __instance)
     {
-        if (!PluginConfig.General.DropAll.Value)
+        if (!PluginConfig.Misc.DropAll.Value)
             return;
-        
+
         foreach (var item in __instance.allItemsList.itemsList)
         {
             if (!item.spawnPrefab || !item.spawnPrefab.TryGetComponent<BeltBagItem>(out _))
                 continue;
-            
-            Array.Resize(ref item.toolTips,item.toolTips.Length + 1);
+
+            Array.Resize(ref item.toolTips, item.toolTips.Length + 1);
 
             item.toolTips[^1] = "Empty Bag: [E]";
             break;
@@ -171,11 +163,105 @@ internal static class BeltBagPatch
                     lung.StopCoroutine(lung.disconnectAnimation);
                 lung.disconnectAnimation = lung.StartCoroutine(lung.DisconnectFromMachinery());
             }
+
             if (lung.isLungDockedInElevator)
             {
                 lung.isLungDockedInElevator = false;
                 lung.gameObject.GetComponent<AudioSource>().PlayOneShot(lung.disconnectSFX);
             }
         }
+    }
+
+    //Handle Limits!
+
+    private class CategoryCount
+    {
+        public int Count;
+    }
+
+    private static readonly
+        ConditionalWeakTable<BeltBagItem, ConditionalWeakTable<PluginConfig.CategoryConfig, CategoryCount>>
+        CategoryMemory = [];
+
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.PutObjectInBagLocalClient))]
+    private static void TrackAdd(BeltBagItem __instance, GrabbableObject gObject)
+    {
+        var config = gObject.GetBagCategory();
+        var memory = CategoryMemory.GetOrCreateValue(__instance);
+        memory.GetOrCreateValue(config).Count += 1;
+    }
+
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.RemoveFromBagLocalClientNonElevatorParent))]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.RemoveFromBagLocalClient))]
+    private static void TrackRemove(BeltBagItem __instance, NetworkObjectReference objectRef)
+    {
+        var memory = CategoryMemory.GetOrCreateValue(__instance);
+        if (objectRef.TryGet(out var networkObject) && networkObject.TryGetComponent<GrabbableObject>(out var gObject))
+        {
+            var config = gObject.GetBagCategory();
+            memory.GetOrCreateValue(config).Count -= 1;
+        }
+
+        if (__instance.objectsInBag.Count == 0)
+        {
+            memory.Clear();
+        }
+    }
+
+    //ServerSide Checks
+
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.TryAddObjectToBagServerRpc))]
+    private static bool EnforceLimits(BeltBagItem __instance, NetworkObjectReference netObjectRef, int playerWhoAdded)
+    {
+        var networkManager = __instance.NetworkManager;
+        if (networkManager == null || !networkManager.IsListening)
+            return true;
+        
+        if (__instance.__rpc_exec_stage != NetworkBehaviour.__RpcExecStage.Server ||
+            !networkManager.IsServer && !networkManager.IsHost)
+            return true;
+        
+        if (!netObjectRef.TryGet(out var networkObject)) 
+            return true;
+        
+        var gObject = networkObject.GetComponent<GrabbableObject>();
+        if (gObject == null || gObject.isHeld || gObject.heldByPlayerOnServer ||
+            gObject.isHeldByEnemy) 
+            return true;
+            
+        if (PluginConfig.Host.Capacity.Value)
+        {
+            if (__instance.objectsInBag.Count >= PluginConfig.Limits.Capacity.Value)
+            {
+                __instance.CancelAddObjectToBagClientRpc(playerWhoAdded);
+                return false;
+            }
+        }
+
+        if (PluginConfig.Host.Category.Value)
+        {
+            if (!__instance.CheckBagFilters(gObject))
+            {
+                __instance.CancelAddObjectToBagClientRpc(playerWhoAdded);
+                return false;
+            }
+        }
+
+        if (PluginConfig.Host.Range.Value)
+        {
+            if (Vector3.Distance(
+                    gObject.transform.position,
+                    __instance.playerHeldBy?.gameplayCamera.transform.position ?? Vector3.positiveInfinity
+                ) > PluginConfig.Misc.GrabRange.Value)
+            {
+                __instance.CancelAddObjectToBagClientRpc(playerWhoAdded);
+                return false;
+            }
+        }
+
+        return true;
     }
 }
