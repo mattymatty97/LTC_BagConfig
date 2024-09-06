@@ -289,15 +289,21 @@ internal static class BeltBagPatch
 
         matcher.Advance(1);
         matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldarg_0));
-        matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldloc_0));
+        matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldarg_1));
         matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, padPositionMethod));
         
         return matcher.Instructions();
     }
 
-    private static Vector3 FixVerticalOffset(Vector3 position, BeltBagItem beltBagItem, NetworkObject targetObject)
+    private static Vector3 FixVerticalOffset(Vector3 position, BeltBagItem beltBagItem, int index)
     {
-        if (!targetObject.TryGetComponent(out GrabbableObject grabbableObject))
+
+        if (beltBagItem.objectsInBag.Count <= index)
+            return position;
+
+        var grabbableObject = beltBagItem.objectsInBag[index];
+
+        if (!grabbableObject)
             return position;
         
         position += Vector3.down * beltBagItem.itemProperties.verticalOffset;

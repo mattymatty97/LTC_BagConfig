@@ -1,3 +1,6 @@
+### v0.0.4
+- Fix NRE
+
 ### v0.0.3
 - Reworked allowList sytem
 - Added Host-Side checks

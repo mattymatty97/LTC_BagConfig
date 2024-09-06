@@ -2,7 +2,7 @@
 <Project>
 	<PropertyGroup>
 		<!-- Common Versioning and Module Information -->
-		<Version>0.0.3</Version>
+		<Version>0.0.4</Version>
 		<ModName>BagConfig</ModName>
 		<ModGUID>mattymatty.BagConfig</ModGUID>
         <ModNameSpace>$(ModName)</ModNameSpace>
