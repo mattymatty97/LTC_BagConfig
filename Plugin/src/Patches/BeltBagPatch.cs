@@ -77,7 +77,7 @@ internal static class BeltBagPatch
                     GameNetworkManager.Instance.localPlayerController.interactableObjectsMask))
                 return;
             
-            BagConfig.Log.LogWarning($"Grab Hit: {raycastHit.collider.transform.parent?.name ?? ""}.{raycastHit.collider.gameObject.name}");
+            BagConfig.Log.LogDebug($"Grab Hit: {raycastHit.collider.transform.parent?.name ?? ""}.{raycastHit.collider.gameObject.name}");
 
             if (raycastHit.collider.gameObject.layer == 8 || raycastHit.collider.tag != "PhysicsProp")
             {
@@ -264,4 +264,45 @@ internal static class BeltBagPatch
 
         return true;
     }
+    
+    // dropcode!
+
+    [HarmonyTranspiler]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.RemoveObjectFromBag))]
+    private static IEnumerable<CodeInstruction> FixDrop(IEnumerable<CodeInstruction> instructions,
+        ILGenerator ilGenerator)
+    {
+        var codes = instructions.ToList();
+
+        var floorPositionMethod = AccessTools.Method(typeof(GrabbableObject), nameof(GrabbableObject.GetItemFloorPosition));
+        var padPositionMethod = AccessTools.Method(typeof(BeltBagPatch), nameof(FixVerticalOffset));
+
+        var matcher = new CodeMatcher(codes, ilGenerator);
+
+        matcher.MatchForward(true, new CodeMatch(OpCodes.Call, floorPositionMethod));
+
+        if (matcher.IsInvalid)
+        {
+            BagConfig.Log.LogError("Patch RemoveObjectFromBag, Fail - 1 ");
+            return codes;
+        }
+
+        matcher.Advance(1);
+        matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldarg_0));
+        matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Ldloc_0));
+        matcher.InsertAndAdvance(new CodeInstruction(OpCodes.Call, padPositionMethod));
+        
+        return matcher.Instructions();
+    }
+
+    private static Vector3 FixVerticalOffset(Vector3 position, BeltBagItem beltBagItem, NetworkObject targetObject)
+    {
+        if (!targetObject.TryGetComponent(out GrabbableObject grabbableObject))
+            return position;
+        
+        position += Vector3.down * beltBagItem.itemProperties.verticalOffset;
+        position += Vector3.up * grabbableObject.itemProperties.verticalOffset;
+        return position;
+    }
+    
 }
