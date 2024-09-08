@@ -89,7 +89,7 @@ internal static class BeltBagPatch
             if (!@this.CanBePutInBag(component))
                 return;
 
-            if (@this.CheckBagFilters(component))
+            if (@this.CheckBagFilters(component, out var limited, out var disallowed ))
             {
                 @this.TryAddObjectToBag(component);
                 return;
@@ -97,8 +97,15 @@ internal static class BeltBagPatch
 
             if (PluginConfig.Misc.Tooltip.Value)
             {
-                HUDManager.Instance.DisplayTip("Belt bag Info",
-                    $"Cannot store {component.itemProperties.itemName} inside of the bag!");
+                if (!disallowed && limited)
+                {
+                    var config = component.GetBagCategory();
+                    HUDManager.Instance.DisplayTip("Belt bag Info",
+                        $"Cannot store any more {config.CategoryName} inside of the bag!");
+                }
+                else 
+                    HUDManager.Instance.DisplayTip("Belt bag Info",
+                        $"Cannot store {component.itemProperties.itemName} inside of the bag!");
             }
         }
     }
@@ -110,25 +117,33 @@ internal static class BeltBagPatch
                /*Maneater!*/grabbable.itemProperties.itemId != 123984;
     }
 
-    private static bool CheckBagFilters(this BeltBagItem @this, GrabbableObject grabbable)
+    private static bool CheckBagFilters(this BeltBagItem @this, GrabbableObject grabbable, out bool limited, out bool disallowed)
     {
+        limited = false;
+        
         var config = grabbable.GetBagCategory();
+        
+        disallowed = !config.Allow;
 
-        var limit = config.Limit.Value;
+        var limit = config.Limit;
 
         if (limit < 0)
-            return config.Allow.Value;
+            return !disallowed;
 
         if (limit == 0)
+        {
+            limited = true;
             return false;
+        }
 
         var memory = CategoryMemory.GetOrCreateValue(@this);
         if (memory.TryGetValue(config, out var count) && count.Count >= limit)
         {
+            limited = true;
             return false;
         }
 
-        return config.Allow.Value;
+        return !disallowed;
     }
 
     [HarmonyPrefix]
@@ -170,6 +185,14 @@ internal static class BeltBagPatch
                 lung.gameObject.GetComponent<AudioSource>().PlayOneShot(lung.disconnectSFX);
             }
         }
+        
+        if (__instance.hasBeenHeld)
+            return;
+        __instance.hasBeenHeld = true;
+        if (__instance.isInShipRoom || StartOfRound.Instance.inShipPhase || !StartOfRound.Instance.currentLevel.spawnEnemiesAndScrap)
+            return;
+        
+        RoundManager.Instance.valueOfFoundScrapItems += __instance.scrapValue;
     }
 
     //Handle Limits!
@@ -180,7 +203,7 @@ internal static class BeltBagPatch
     }
 
     private static readonly
-        ConditionalWeakTable<BeltBagItem, ConditionalWeakTable<PluginConfig.CategoryConfig, CategoryCount>>
+        ConditionalWeakTable<BeltBagItem, ConditionalWeakTable<PluginConfig.ICategoryConfig, CategoryCount>>
         CategoryMemory = [];
 
     [HarmonyPostfix]
@@ -228,9 +251,11 @@ internal static class BeltBagPatch
             return true;
         
         var gObject = networkObject.GetComponent<GrabbableObject>();
-        if (gObject == null || gObject.isHeld || gObject.heldByPlayerOnServer ||
-            gObject.isHeldByEnemy) 
-            return true;
+
+        if (!__instance.CanBePutInBag(gObject)){
+            __instance.CancelAddObjectToBagClientRpc(playerWhoAdded);
+            return false;
+        }
             
         if (PluginConfig.Host.Capacity.Value)
         {
@@ -243,7 +268,7 @@ internal static class BeltBagPatch
 
         if (PluginConfig.Host.Category.Value)
         {
-            if (!__instance.CheckBagFilters(gObject))
+            if (!__instance.CheckBagFilters(gObject, out _, out _))
             {
                 __instance.CancelAddObjectToBagClientRpc(playerWhoAdded);
                 return false;
@@ -263,6 +288,16 @@ internal static class BeltBagPatch
         }
 
         return true;
+    }
+
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.CancelAddObjectToBagClientRpc))]
+    private static void OnServerRefusal(int playerWhoAdded)
+    {
+        if (StartOfRound.Instance.allPlayerScripts[playerWhoAdded] != GameNetworkManager.Instance.localPlayerController)
+            return;
+        HUDManager.Instance.DisplayTip("Belt bag Info",
+            $"Host refused your grab request!", true);
     }
     
     // dropcode!
@@ -294,6 +329,7 @@ internal static class BeltBagPatch
         
         return matcher.Instructions();
     }
+    
 
     private static Vector3 FixVerticalOffset(Vector3 position, BeltBagItem beltBagItem, int index)
     {
@@ -309,6 +345,22 @@ internal static class BeltBagPatch
         position += Vector3.down * beltBagItem.itemProperties.verticalOffset;
         position += Vector3.up * grabbableObject.itemProperties.verticalOffset;
         return position;
+    }
+    
+    // First Person
+
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.PocketItem))]
+    private static void HideWhenInPocket(BeltBagItem __instance)
+    {
+        if (!__instance.IsOwner)
+            return;
+        
+        if (!PluginConfig.Misc.HideBag.Value)
+            return;
+        
+        __instance.useBagTrigger.GetComponent<Collider>().enabled = false;
+        __instance.EnableItemMeshes(false);
     }
     
 }
