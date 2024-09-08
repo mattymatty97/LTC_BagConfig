@@ -1,3 +1,8 @@
+### v0.0.5
+- improve Readme
+- add option to hide the bag when pocketed
+- improve Tooltip messages
+
 ### v0.0.4
 - Fix NRE
 
