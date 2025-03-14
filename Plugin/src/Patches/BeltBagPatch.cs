@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using BagConfig.Networking;
 using HarmonyLib;
 using MonoMod.RuntimeDetour;
 using Unity.Netcode;
@@ -14,6 +15,8 @@ namespace BagConfig.Patches;
 [HarmonyPatch]
 internal static class BeltBagPatch
 {
+    internal static bool Enabled = false;
+
     internal static void Patch()
     {
         var beltInteractMethod = AccessTools.Method(typeof(BeltBagItem), nameof(BeltBagItem.ItemInteractLeftRight));
@@ -49,10 +52,9 @@ internal static class BeltBagPatch
 
     private static void OverrideGrab(Action<BeltBagItem, bool> orig, BeltBagItem @this, bool right)
     {
-        BaseInteractMethod.Invoke(@this, right);
-
         if (right)
         {
+            BaseInteractMethod.Invoke(@this, true);
             if (!PluginConfig.Misc.DropAll.Value)
                 return;
             //dump all items!
@@ -60,6 +62,14 @@ internal static class BeltBagPatch
         }
         else
         {
+
+            if (!Enabled)
+            {
+                orig.Invoke(@this, false);
+                return;
+            }
+
+            BaseInteractMethod.Invoke(@this, false);
             if (@this.playerHeldBy == null || @this.tryingAddToBag)
                 return;
 
@@ -361,6 +371,32 @@ internal static class BeltBagPatch
         
         __instance.useBagTrigger.GetComponent<Collider>().enabled = false;
         __instance.EnableItemMeshes(false);
+    }
+
+    //Lockdown System
+
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.Start))]
+    private static void OnLobbyJoin(StartOfRound __instance)
+    {
+        Enabled = __instance.IsServer;
+    }
+
+    [HarmonyPostfix]
+    [HarmonyPatch(typeof(StartOfRound), nameof(StartOfRound.OnClientConnect))]
+    private static void OnClientJoined(StartOfRound __instance, ulong clientId)
+    {
+        if (!__instance.IsServer)
+            return;
+
+        NamedMessages.HostPresentClientRpc([clientId]);
+    }
+
+    [HarmonyPrefix]
+    [HarmonyPatch(typeof(MenuManager), nameof(MenuManager.Start))]
+    private static void OnMainMenu()
+    {
+        Enabled = false;
     }
     
 }

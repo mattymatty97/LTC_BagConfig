@@ -1,3 +1,6 @@
+### v1.0.0
+- lockdown client-side actions if the mod is missing on the host
+
 ### v0.0.5
 - improve Readme
 - add option to hide the bag when pocketed

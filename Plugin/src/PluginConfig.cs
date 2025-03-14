@@ -15,8 +15,6 @@ internal static class PluginConfig
     private const string OneHandedCategory = "One Handed Scrap";
     private const string TwoHandedCategory = "Two Handed Scrap";
     
-    
-    
     internal static void Init()
     {
         var config = BagConfig.INSTANCE.Config;
@@ -27,10 +25,11 @@ internal static class PluginConfig
         Misc.HideBag = config.Bind("Miscellaneous", "Hide Bag When Pocketed", false, "Hide the bag when in pocket ( also disables opening it by looking down )");
         Misc.GrabRange = config.Bind("Miscellaneous", "Grab Range", 4f, new ConfigDescription("Max range for grabbing items with the bag", new AcceptableValueRange<float>(0f,20f)));
         
-        Host.Capacity = config.Bind("Host Settings", "Enforce Capacity"    , true, "Server-side check to limit the bag Capacity");
-        Host.Category = config.Bind("Host Settings", "Enforce Restrictions", true, "Server-side check to limit the items allowed inside the Bag");
-        Host.Range    = config.Bind("Host Settings", "Enforce Range"       , true, "Server-side check to limit the grab range");
-        
+        Host.Capacity      = config.Bind("Host Settings", "Enforce Capacity"    , true, "Server-side check to limit the bag Capacity");
+        Host.Category      = config.Bind("Host Settings", "Enforce Restrictions", true, "Server-side check to limit the items allowed inside the Bag");
+        Host.Range         = config.Bind("Host Settings", "Enforce Range"       , true, "Server-side check to limit the grab range");
+        Host.AllowVanilla = config.Bind("Host Settings", "Allow Vanilla Clients", false, "Allow clients w/o the mod to join the lobby");
+
         Limits.Capacity = config.Bind("Limits", "Capacity", 15, new ConfigDescription("How many items can the bag store", new AcceptableValueRange<int>(0, int.MaxValue)));
         Limits.ItemCategories = config.Bind("Limits", "Item Categories", "Body: Deny", new ConfigDescription("Dictionary describing the association between a Item and a Category name"));
 
@@ -54,6 +53,7 @@ internal static class PluginConfig
             LethalConfigProxy.AddConfig(Host.Capacity);
             LethalConfigProxy.AddConfig(Host.Category);
             LethalConfigProxy.AddConfig(Host.Range);
+            LethalConfigProxy.AddConfig(Host.AllowVanilla, true);
         }
 
         CleanAndSave();
@@ -116,9 +116,10 @@ internal static class PluginConfig
     
     public static class Host
     {
-        public static ConfigEntry<bool> Capacity { get; internal set; }
-        public static ConfigEntry<bool> Category { get; internal set; }
-        public static ConfigEntry<bool> Range    { get; internal set; }
+        public static ConfigEntry<bool> Capacity        { get; internal set; }
+        public static ConfigEntry<bool> Category        { get; internal set; }
+        public static ConfigEntry<bool> Range           { get; internal set; }
+        public static ConfigEntry<bool> AllowVanilla    { get; internal set; }
     }
     
     public static class Limits
