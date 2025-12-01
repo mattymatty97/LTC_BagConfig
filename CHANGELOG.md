@@ -1,3 +1,7 @@
+### v1.0.1
+- rebuild for v73
+- add support for remapping keys with InputUtils
+
 ### v1.0.0
 - lockdown client-side actions if the mod is missing on the host
 

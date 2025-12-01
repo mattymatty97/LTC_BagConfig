@@ -1,4 +1,5 @@
 ﻿using System;
+using BagConfig.Utils;
 using HarmonyLib;
 using Unity.Netcode;
 
@@ -12,7 +13,7 @@ internal static class PatchLateJoin
     {
         var target = AccessTools.Method(typeof(BeltBagItem), nameof(BeltBagItem.TryAddObjectToBagClientRpc));
         
-        if (!Utils.TryGetRpcID(target, out _tryAddObjectToBagClientRpc))
+        if (!target.TryGetRpcID(out _tryAddObjectToBagClientRpc))
         {
             throw new MissingMemberException(nameof(BeltBagItem), nameof(BeltBagItem.TryAddObjectToBagClientRpc));
         }

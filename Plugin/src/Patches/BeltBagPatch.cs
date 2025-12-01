@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using BagConfig.Dependency;
 using BagConfig.Networking;
+using BagConfig.Utils;
 using HarmonyLib;
 using MonoMod.RuntimeDetour;
 using Unity.Netcode;
@@ -50,73 +52,92 @@ internal static class BeltBagPatch
         }
     }
 
+    internal static void TryDumpItems(BeltBagItem @this, bool checkInHand = true)
+    {
+        if (!PluginConfig.Misc.DropAll.Value)
+            return;
+        
+        if (@this.playerHeldBy == null || (checkInHand && @this.playerHeldBy.currentlyHeldObjectServer != @this))
+            return;
+        
+        //dump all items!
+        @this.StartCoroutine(EmptyBagCoroutine(@this));
+    }
+    
+    internal static void TryGrabItem(BeltBagItem @this, bool checkInHand = true)
+    {
+        if (@this.playerHeldBy == null || (checkInHand && @this.playerHeldBy.currentlyHeldObjectServer != @this))
+            return;
+        
+        if(@this.tryingAddToBag)
+            return;
+
+        if (@this.objectsInBag.Count >= PluginConfig.Limits.Capacity.Value)
+        {
+            if (PluginConfig.Misc.Tooltip.Value)
+                HUDManager.Instance.DisplayTip("Belt bag Info", "This bag is Full!");
+            return;
+        }
+
+        if (!Physics.Raycast(@this.playerHeldBy.gameplayCamera.transform.position,
+                @this.playerHeldBy.gameplayCamera.transform.forward,
+                out var raycastHit,
+                PluginConfig.Misc.GrabRange.Value,
+                GameNetworkManager.Instance.localPlayerController.interactableObjectsMask))
+            return;
+            
+        BagConfig.Log.LogDebug($"Grab Hit: {raycastHit.collider.transform.parent?.name ?? ""}.{raycastHit.collider.gameObject.name}");
+
+        if (raycastHit.collider.gameObject.layer == 8 || raycastHit.collider.tag != "PhysicsProp")
+        {
+            return;
+        }
+
+        var component = raycastHit.collider.gameObject.GetComponent<GrabbableObject>();
+
+        if (!@this.CanBePutInBag(component))
+            return;
+
+        if (@this.CheckBagFilters(component, out var limited, out var disallowed ))
+        {
+            @this.TryAddObjectToBag(component);
+            return;
+        }
+
+        if (!PluginConfig.Misc.Tooltip.Value) 
+            return;
+        
+        if (!disallowed && limited)
+        {
+            var config = component.GetBagCategory();
+            HUDManager.Instance.DisplayTip("Belt bag Info",
+                $"Cannot store any more {config.CategoryName} inside of the bag!");
+        }
+        else 
+            HUDManager.Instance.DisplayTip("Belt bag Info",
+                $"Cannot store {component.itemProperties.itemName} inside of the bag!");
+    }
+
     private static void OverrideGrab(Action<BeltBagItem, bool> orig, BeltBagItem @this, bool right)
     {
+        if (!Enabled)
+        {
+            orig.Invoke(@this, false);
+            return;
+        }
+        
+        BaseInteractMethod.Invoke(@this, right);
+        
+        if (InputUtilsProxy.Enabled)
+            return;
+
         if (right)
         {
-            BaseInteractMethod.Invoke(@this, true);
-            if (!PluginConfig.Misc.DropAll.Value)
-                return;
-            //dump all items!
-            @this.StartCoroutine(EmptyBagCoroutine(@this));
+            TryDumpItems(@this);
         }
         else
         {
-
-            if (!Enabled)
-            {
-                orig.Invoke(@this, false);
-                return;
-            }
-
-            BaseInteractMethod.Invoke(@this, false);
-            if (@this.playerHeldBy == null || @this.tryingAddToBag)
-                return;
-
-            if (@this.objectsInBag.Count >= PluginConfig.Limits.Capacity.Value)
-            {
-                if (PluginConfig.Misc.Tooltip.Value)
-                    HUDManager.Instance.DisplayTip("Belt bag Info", "This bag is Full!");
-                return;
-            }
-
-            if (!Physics.Raycast(@this.playerHeldBy.gameplayCamera.transform.position,
-                    @this.playerHeldBy.gameplayCamera.transform.forward,
-                    out var raycastHit,
-                    PluginConfig.Misc.GrabRange.Value,
-                    GameNetworkManager.Instance.localPlayerController.interactableObjectsMask))
-                return;
-            
-            BagConfig.Log.LogDebug($"Grab Hit: {raycastHit.collider.transform.parent?.name ?? ""}.{raycastHit.collider.gameObject.name}");
-
-            if (raycastHit.collider.gameObject.layer == 8 || raycastHit.collider.tag != "PhysicsProp")
-            {
-                return;
-            }
-
-            var component = raycastHit.collider.gameObject.GetComponent<GrabbableObject>();
-
-            if (!@this.CanBePutInBag(component))
-                return;
-
-            if (@this.CheckBagFilters(component, out var limited, out var disallowed ))
-            {
-                @this.TryAddObjectToBag(component);
-                return;
-            }
-
-            if (PluginConfig.Misc.Tooltip.Value)
-            {
-                if (!disallowed && limited)
-                {
-                    var config = component.GetBagCategory();
-                    HUDManager.Instance.DisplayTip("Belt bag Info",
-                        $"Cannot store any more {config.CategoryName} inside of the bag!");
-                }
-                else 
-                    HUDManager.Instance.DisplayTip("Belt bag Info",
-                        $"Cannot store {component.itemProperties.itemName} inside of the bag!");
-            }
+            TryGrabItem(@this);
         }
     }
 
@@ -249,12 +270,7 @@ internal static class BeltBagPatch
     [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.TryAddObjectToBagServerRpc))]
     private static bool EnforceLimits(BeltBagItem __instance, NetworkObjectReference netObjectRef, int playerWhoAdded)
     {
-        var networkManager = __instance.NetworkManager;
-        if (networkManager == null || !networkManager.IsListening)
-            return true;
-        
-        if (__instance.__rpc_exec_stage != NetworkBehaviour.__RpcExecStage.Server ||
-            !networkManager.IsServer && !networkManager.IsHost)
+        if(!__instance.IsRPCServerStage())
             return true;
         
         if (!netObjectRef.TryGet(out var networkObject)) 

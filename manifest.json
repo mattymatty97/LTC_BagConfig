@@ -1,6 +1,6 @@
 {
   "name": "BagConfig",
-  "version_number": "0.0.6",
+  "version_number": "1.0.1",
   "website_url": "https://github.com/mattymatty97/LTC_BagConfig",
   "description": "Tweak the behavior of Belt Bags",
   "dependencies": [

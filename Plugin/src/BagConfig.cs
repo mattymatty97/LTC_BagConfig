@@ -12,6 +12,7 @@ namespace BagConfig
     [BepInPlugin(GUID, NAME, VERSION)]
     [BepInDependency("BMX.LobbyCompatibility", Flags:BepInDependency.DependencyFlags.SoftDependency)]
     [BepInDependency("ainavt.lc.lethalconfig", Flags:BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInDependency("com.rune580.LethalCompanyInputUtils", Flags:BepInDependency.DependencyFlags.SoftDependency)]
     internal class BagConfig : BaseUnityPlugin
     {
 		
@@ -35,6 +36,9 @@ namespace BagConfig
             {
 				if (LobbyCompatibilityChecker.Enabled)
 					LobbyCompatibilityChecker.Init();
+				
+				if (InputUtilsProxy.Enabled)
+					InputUtilsProxy.Init();
 				
 				Log.LogInfo("Initializing Configs");
 

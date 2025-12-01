@@ -1,4 +1,5 @@
-﻿using BagConfig.Networking;
+﻿using System.Linq;
+using BagConfig.Networking;
 using HarmonyLib;
 using Unity.Netcode;
 using UnityEngine;
@@ -38,8 +39,14 @@ internal class NetworkManagerPatch
         prefab.hideFlags |= HideFlags.HideAndDontSave;
         Object.DontDestroyOnLoad(prefab);
         var networkObject = prefab.AddComponent<NetworkObject>();
-        networkObject.GlobalObjectIdHash = MyPluginInfo.PLUGIN_GUID.Hash32();
+        networkObject.GlobalObjectIdHash = GetHash(MyPluginInfo.PLUGIN_GUID);
 
         NetworkManager.Singleton.PrefabHandler.AddNetworkPrefab(prefab);
+
+        return;
+        static uint GetHash(string value)
+        {
+            return value?.Aggregate(17u, (current, c) => unchecked((current * 31) ^ c)) ?? 0u;
+        }
     }
 }
