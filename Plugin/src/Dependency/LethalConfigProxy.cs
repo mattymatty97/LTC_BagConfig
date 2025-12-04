@@ -1,3 +1,5 @@
+﻿using System;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using BepInEx.Configuration;
 using LethalConfig;
@@ -24,7 +26,8 @@ public static class LethalConfigProxy
     {
         LethalConfigManager.AddConfigItem(new TextInputFieldConfigItem(entry, new TextInputFieldOptions()
         {
-            RequiresRestart = requiresRestart
+            RequiresRestart = requiresRestart,
+            Name = GetPrettyConfigName(entry)
         }));
     }
         
@@ -33,7 +36,8 @@ public static class LethalConfigProxy
     {
         LethalConfigManager.AddConfigItem(new BoolCheckBoxConfigItem(entry, new BoolCheckBoxOptions()
         {
-            RequiresRestart = requiresRestart
+            RequiresRestart = requiresRestart,
+            Name = GetPrettyConfigName(entry)
         }));
     }
         
@@ -42,7 +46,8 @@ public static class LethalConfigProxy
     {
         LethalConfigManager.AddConfigItem(new FloatInputFieldConfigItem(entry, new FloatInputFieldOptions()
         {
-            RequiresRestart = requiresRestart
+            RequiresRestart = requiresRestart,
+            Name = GetPrettyConfigName(entry)
         }));
     }
         
@@ -51,8 +56,40 @@ public static class LethalConfigProxy
     {
         LethalConfigManager.AddConfigItem(new IntInputFieldConfigItem(entry, new IntInputFieldOptions()
         {
-            RequiresRestart = requiresRestart
+            RequiresRestart = requiresRestart,
+            Name = GetPrettyConfigName(entry)
         }));
     }
         
+    [MethodImpl(MethodImplOptions.NoInlining | MethodImplOptions.NoOptimization)]
+    public static void AddButton(string section, string name, string description, string buttonText, Action callback, CanModifyDelegate canModify = null)
+    {
+        var btn = new GenericButtonConfigItem( section, name, description, buttonText, () => callback?.Invoke() );
+        if (canModify != null)
+            btn.ButtonOptions.CanModifyCallback = () => ((bool result, string reason))canModify();
+        LethalConfigManager.AddConfigItem(btn);
+    }
+		
+		
+    private static string GetPrettyConfigName<T>(ConfigEntry<T> entry)
+    {
+        return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(entry.Definition.Key.Replace("_", " "));
+    }
+
+    public struct CanModifyResult(bool canModify, string reason)
+    {
+        public readonly bool   CanModify = canModify;
+        public readonly string Reason    = reason;
+
+        public static implicit operator CanModifyResult((bool result, string reason) tuple)
+        {
+            return new CanModifyResult(tuple.result, tuple.reason);
+        }
+        public static implicit operator (bool result, string reason)(CanModifyResult result)
+        {
+            return (result.CanModify, result.Reason);
+        }
+    }
+
+    public delegate CanModifyResult CanModifyDelegate();
 }

@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.Linq;
 using System.Reflection;
 using BagConfig.Dependency;
+using BagConfig.Networking;
 using BepInEx.Configuration;
 using HarmonyLib;
 
@@ -54,6 +55,16 @@ internal static class PluginConfig
             LethalConfigProxy.AddConfig(Host.Category);
             LethalConfigProxy.AddConfig(Host.Range);
             LethalConfigProxy.AddConfig(Host.AllowVanilla, true);
+
+            LethalConfigProxy.AddButton("Fixes",
+                "Fix Locked BeltBags",
+                "Re-Enable all BeltBags that are in a broken state",
+                "Fix",
+                () => NamedMessages.FixBagsClientRpc(),
+                () => StartOfRound.Instance == null ? (false, "You need to be in a lobby to call this") :
+                    !GameNetworkManager.Instance.isHostingGame ? (false, "Only host can call this function") :
+                    (true, "")
+            );
         }
 
         CleanAndSave();

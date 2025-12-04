@@ -8,6 +8,7 @@ using BagConfig.Dependency;
 using BagConfig.Networking;
 using BagConfig.Utils;
 using HarmonyLib;
+using JetBrains.Annotations;
 using MonoMod.RuntimeDetour;
 using Unity.Netcode;
 using UnityEngine;
@@ -196,36 +197,6 @@ internal static class BeltBagPatch
         }
     }
 
-    [HarmonyPostfix]
-    [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.PutObjectInBagLocalClient))]
-    private static void TriggerHeldActions(BeltBagItem __instance, GrabbableObject gObject)
-    {
-        if (gObject is LungProp lung)
-        {
-            if (lung.isLungDocked)
-            {
-                lung.isLungDocked = false;
-                if (lung.disconnectAnimation != null)
-                    lung.StopCoroutine(lung.disconnectAnimation);
-                lung.disconnectAnimation = lung.StartCoroutine(lung.DisconnectFromMachinery());
-            }
-
-            if (lung.isLungDockedInElevator)
-            {
-                lung.isLungDockedInElevator = false;
-                lung.gameObject.GetComponent<AudioSource>().PlayOneShot(lung.disconnectSFX);
-            }
-        }
-        
-        if (__instance.hasBeenHeld)
-            return;
-        __instance.hasBeenHeld = true;
-        if (__instance.isInShipRoom || StartOfRound.Instance.inShipPhase || !StartOfRound.Instance.currentLevel.spawnEnemiesAndScrap)
-            return;
-        
-        RoundManager.Instance.valueOfFoundScrapItems += __instance.scrapValue;
-    }
-
     //Handle Limits!
 
     private class CategoryCount
@@ -237,15 +208,55 @@ internal static class BeltBagPatch
         ConditionalWeakTable<BeltBagItem, ConditionalWeakTable<PluginConfig.ICategoryConfig, CategoryCount>>
         CategoryMemory = [];
 
-    [HarmonyPostfix]
     [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.PutObjectInBagLocalClient))]
-    private static void TrackAdd(BeltBagItem __instance, GrabbableObject gObject)
+    private static class OnItemPutObjectInBag
     {
-        var config = gObject.GetBagCategory();
-        var memory = CategoryMemory.GetOrCreateValue(__instance);
-        memory.GetOrCreateValue(config).Count += 1;
-    }
+        [UsedImplicitly]
+        private static void Prefix(BeltBagItem __instance, GrabbableObject gObject, ref bool __state)
+        {
+            __state = __instance.objectsInBag.Contains(gObject);
+        }
+        
+        [UsedImplicitly]
+        private static void Postfix(BeltBagItem __instance, GrabbableObject gObject, ref bool __state)
+        {
+            //if the item was already in the bag, skip
+            if (__state)
+                return;
+            
+            //track grabs
+            var config = gObject.GetBagCategory();
+            var memory = CategoryMemory.GetOrCreateValue(__instance);
+            memory.GetOrCreateValue(config).Count += 1;
+            
+            //trigger held actions
+            if (gObject is LungProp lung)
+            {
+                if (lung.isLungDocked)
+                {
+                    lung.isLungDocked = false;
+                    if (lung.disconnectAnimation != null)
+                        lung.StopCoroutine(lung.disconnectAnimation);
+                    lung.disconnectAnimation = lung.StartCoroutine(lung.DisconnectFromMachinery());
+                }
 
+                if (lung.isLungDockedInElevator)
+                {
+                    lung.isLungDockedInElevator = false;
+                    lung.gameObject.GetComponent<AudioSource>().PlayOneShot(lung.disconnectSFX);
+                }
+            }
+        
+            if (__instance.hasBeenHeld)
+                return;
+            __instance.hasBeenHeld = true;
+            if (__instance.isInShipRoom || StartOfRound.Instance.inShipPhase || !StartOfRound.Instance.currentLevel.spawnEnemiesAndScrap)
+                return;
+        
+            RoundManager.Instance.valueOfFoundScrapItems += __instance.scrapValue;
+        }
+    }
+    
     [HarmonyPostfix]
     [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.RemoveFromBagLocalClientNonElevatorParent))]
     [HarmonyPatch(typeof(BeltBagItem), nameof(BeltBagItem.RemoveFromBagLocalClient))]

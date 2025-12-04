@@ -1,3 +1,6 @@
+### v1.0.2
+- add a LethalConfig button to fix a vanilla issue that can leave bags in an invalid state
+
 ### v1.0.1
 - rebuild for v73
 - add support for remapping keys with InputUtils
